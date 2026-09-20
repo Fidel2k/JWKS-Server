@@ -11,7 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Creates fresh keys before each handler test.
+//makes new keys before each handler test
 func setupTestKeys(t *testing.T) {
 	t.Helper()
 
@@ -33,7 +33,7 @@ func setupTestKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
+//test that the RSA key is made correctly 
 func TestGenerateKeyPair(t *testing.T) {
 	key, err := generateKeyPair(
 		"test-key",
@@ -52,7 +52,7 @@ func TestGenerateKeyPair(t *testing.T) {
 		t.Errorf("Expected kid test-key, got %s", key.Kid)
 	}
 }
-
+//Test that both the valid and expired key are made
 func TestInitializeKeys(t *testing.T) {
 	err := initializeKeys()
 
@@ -76,7 +76,7 @@ func TestInitializeKeys(t *testing.T) {
 		t.Error("Expired key should be expired")
 	}
 }
-
+//test home page
 func TestHomeHandler(t *testing.T) {
 	setupTestKeys(t)
 
@@ -95,7 +95,7 @@ func TestHomeHandler(t *testing.T) {
 		t.Error("Home page did not return expected message")
 	}
 }
-
+//Test that the JWKS returns a valid key
 func TestJWKSHandler(t *testing.T) {
 	setupTestKeys(t)
 
@@ -121,7 +121,7 @@ func TestJWKSHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	//only the valid key is returned 
 	if len(jwks.Keys) != 1 {
 		t.Fatalf("Expected 1 valid key, got %d", len(jwks.Keys))
 	}
@@ -140,7 +140,7 @@ func TestJWKSHandler(t *testing.T) {
 		)
 	}
 }
-
+//make sure POST request is not allowed on the JWKS
 func TestJWKSRejectsPost(t *testing.T) {
 	setupTestKeys(t)
 
@@ -163,7 +163,7 @@ func TestJWKSRejectsPost(t *testing.T) {
 		)
 	}
 }
-
+//Test /auth returns a valid jwt
 func TestAuthValidToken(t *testing.T) {
 	setupTestKeys(t)
 
@@ -187,7 +187,7 @@ func TestAuthValidToken(t *testing.T) {
 	}
 
 	tokenString := strings.TrimSpace(response.Body.String())
-
+	//parse the token to check header 
 	parser := jwt.NewParser()
 
 	token, _, err := parser.ParseUnverified(
@@ -198,7 +198,7 @@ func TestAuthValidToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	//The normal token should return valid key
 	if token.Header["kid"] != "valid-key" {
 		t.Errorf(
 			"Expected valid-key, got %v",
@@ -212,12 +212,12 @@ func TestAuthValidToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	
 	if expiration.Time.Before(time.Now()) {
 		t.Error("Valid JWT should not be expired")
 	}
 }
-
+//test if expired is true 
 func TestAuthExpiredToken(t *testing.T) {
 	setupTestKeys(t)
 
@@ -252,7 +252,7 @@ func TestAuthExpiredToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	//the expired toke should use the expired key
 	if token.Header["kid"] != "expired-key" {
 		t.Errorf(
 			"Expected expired-key, got %v",
@@ -271,7 +271,7 @@ func TestAuthExpiredToken(t *testing.T) {
 		t.Error("Expired JWT should have an expired expiration time")
 	}
 }
-
+// Makes sure GET request are not allowed on /auth
 func TestAuthRejectsGet(t *testing.T) {
 	setupTestKeys(t)
 

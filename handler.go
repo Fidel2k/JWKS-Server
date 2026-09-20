@@ -8,7 +8,7 @@ import (
 	"time"
 	"github.com/golang-jwt/jwt/v5"
 )
-
+//public key info sent to client
 type JWK struct {
 	Kty string `json:"kty"`
 	Kid string `json:"kid"`
@@ -17,27 +17,28 @@ type JWK struct {
 	N   string `json:"n"`
 	E   string `json:"e"`
 }
-
+//holds list of keys
 type JWKS struct {
 	Keys []JWK `json:"keys"`
 }
-
+//hanles requests to jwk endpoint
 func jwksHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		//only allow GET request
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	keys := []JWK{}
 
-	// Only include the key if it has not expired.
+	// Only include the key if it has not expired
 	if validKey != nil && validKey.ExpiresAt.After(time.Now()) {
 		publicKey := &validKey.PrivateKey.PublicKey
 
-		// Convert RSA modulus to Base64 URL encoding.
+		// Convert RSA modulus to Base64 URL encoding
 		n := base64.RawURLEncoding.EncodeToString(publicKey.N.Bytes())
 
-		// Convert RSA exponent to Base64 URL encoding.
+		// Convert RSA exponent to Base64 URL encoding
 		eBytes := big.NewInt(int64(publicKey.E)).Bytes()
 		e := base64.RawURLEncoding.EncodeToString(eBytes)
 
@@ -70,7 +71,7 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 
 	key := validKey
 
-	// If the expired query parameter exists, use the expired key.
+	//If the expired query parameter exists and use the expired key
 	if _, exists := r.URL.Query()["expired"]; exists {
 		key = expiredKey
 	}
@@ -93,7 +94,7 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 
-	// Add the key ID to the JWT header.
+	//Add the key ID to the JWT header
 	token.Header["kid"] = key.Kid
 
 	signedToken, err := token.SignedString(key.PrivateKey)
