@@ -10,7 +10,7 @@ import (
 var validKey *KeyPair
 var expiredKey *KeyPair
 
-func main() {
+func initializeKeys() error {
 	var err error
 
 	validKey, err = generateKeyPair(
@@ -18,7 +18,7 @@ func main() {
 		time.Now().Add(1*time.Hour),
 	)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	expiredKey, err = generateKeyPair(
@@ -26,18 +26,31 @@ func main() {
 		time.Now().Add(-1*time.Hour),
 	)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	http.HandleFunc("/", homeHandler)
-	http.HandleFunc("/.well-known/jwks.json", jwksHandler)
+	return nil
+}
 
-	fmt.Println("Server running on http://localhost:8080")
+func newRouter() *http.ServeMux {
+	mux := http.NewServeMux()
 
-	err = http.ListenAndServe(":8080", nil)
+	mux.HandleFunc("/", homeHandler)
+	mux.HandleFunc("/.well-known/jwks.json", jwksHandler)
+	mux.HandleFunc("/auth", authHandler)
+
+	return mux
+}
+
+func main() {
+	err := initializeKeys()
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Println("Server running on http://localhost:8080")
+
+	log.Fatal(http.ListenAndServe(":8080", newRouter()))
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
