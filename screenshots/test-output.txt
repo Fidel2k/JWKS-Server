@@ -1,0 +1,13 @@
+=== RUN   TestAuthAndJWKS
+--- PASS: TestAuthAndJWKS (0.45s)
+=== RUN   TestRoutesAndMethods
+--- PASS: TestRoutesAndMethods (0.30s)
+=== RUN   TestPersistenceAndAllValidKeys
+--- PASS: TestPersistenceAndAllValidKeys (0.38s)
+=== RUN   TestDatabaseFailuresAndEmptyResults
+--- PASS: TestDatabaseFailuresAndEmptyResults (0.39s)
+=== RUN   TestInvalidStoredKeysAndExpiryBoundary
+--- PASS: TestInvalidStoredKeysAndExpiryBoundary (0.51s)
+PASS
+coverage: 84.1% of statements
+ok  	jwks-server	2.046s	coverage: 84.1% of statements

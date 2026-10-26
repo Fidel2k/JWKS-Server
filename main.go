@@ -6,54 +6,34 @@ import (
 	"net/http"
 	"time"
 )
-//hold key valid and expired so handler can use
-var validKey *KeyPair
-var expiredKey *KeyPair
-//creates one valid key and one expired key when program starts 
-func initializeKeys() error {
-	var err error
-	//key expires in 1hr
-	validKey, err = generateKeyPair(
-		"valid-key",
-		time.Now().Add(1*time.Hour),
-	)
-	if err != nil {
-		return err
-	}
-	//expired key 1hr ago
-	expiredKey, err = generateKeyPair(
-		"expired-key",
-		time.Now().Add(-1*time.Hour),
-	)
-	if err != nil {
-		return err
-	}
 
-	return nil
-}
-//setup all routs for server
-func newRouter() *http.ServeMux {
+func newRouter(store *keyStore) *http.ServeMux {
 	mux := http.NewServeMux()
-
 	mux.HandleFunc("/", homeHandler)
-	mux.HandleFunc("/.well-known/jwks.json", jwksHandler)
-	mux.HandleFunc("/auth", authHandler)
-
+	mux.HandleFunc("/.well-known/jwks.json", store.jwksHandler)
+	mux.HandleFunc("/auth", store.authHandler)
 	return mux
 }
 
 func main() {
-	//generate the key before starting the server
-	err := initializeKeys()
+	store, err := openKeyStore(databaseFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	defer store.db.Close()
+	if err := store.initializeKeys(); err != nil {
+		log.Print(err)
+		return
+	}
 	fmt.Println("Server running on http://localhost:8080")
-
-	log.Fatal(http.ListenAndServe(":8080", newRouter()))
+	server := &http.Server{Addr: ":8080", Handler: newRouter(store), ReadHeaderTimeout: 5 * time.Second}
+	log.Print(server.ListenAndServe())
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
 	fmt.Fprintln(w, "JWKS Server is running!")
 }

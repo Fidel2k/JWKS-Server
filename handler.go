@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"github.com/golang-jwt/jwt/v5"
 	"math/big"
 	"net/http"
 	"time"
-	"github.com/golang-jwt/jwt/v5"
 )
-//public key info sent to client
+
+// public key info sent to client
 type JWK struct {
 	Kty string `json:"kty"`
 	Kid string `json:"kid"`
@@ -17,12 +18,14 @@ type JWK struct {
 	N   string `json:"n"`
 	E   string `json:"e"`
 }
-//holds list of keys
+
+// holds list of keys
 type JWKS struct {
 	Keys []JWK `json:"keys"`
 }
-//hanles requests to jwk endpoint
-func jwksHandler(w http.ResponseWriter, r *http.Request) {
+
+// hanles requests to jwk endpoint
+func (s *keyStore) jwksHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		//only allow GET request
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -31,25 +34,16 @@ func jwksHandler(w http.ResponseWriter, r *http.Request) {
 
 	keys := []JWK{}
 
-	// Only include the key if it has not expired
-	if validKey != nil && validKey.ExpiresAt.After(time.Now()) {
-		publicKey := &validKey.PrivateKey.PublicKey
-
-		// Convert RSA modulus to Base64 URL encoding
-		n := base64.RawURLEncoding.EncodeToString(publicKey.N.Bytes())
-
-		// Convert RSA exponent to Base64 URL encoding
-		eBytes := big.NewInt(int64(publicKey.E)).Bytes()
-		e := base64.RawURLEncoding.EncodeToString(eBytes)
-
-		keys = append(keys, JWK{
-			Kty: "RSA",
-			Kid: validKey.Kid,
-			Use: "sig",
-			Alg: "RS256",
-			N:   n,
-			E:   e,
-		})
+	stored, err := s.read(false, time.Now().Unix())
+	if err != nil {
+		http.Error(w, "Failed to read keys", http.StatusInternalServerError)
+		return
+	}
+	for _, key := range stored {
+		publicKey := &key.PrivateKey.PublicKey
+		keys = append(keys, JWK{Kty: "RSA", Kid: key.Kid, Use: "sig", Alg: "RS256",
+			N: base64.RawURLEncoding.EncodeToString(publicKey.N.Bytes()),
+			E: base64.RawURLEncoding.EncodeToString(big.NewInt(int64(publicKey.E)).Bytes())})
 	}
 
 	response := JWKS{
@@ -58,36 +52,30 @@ func jwksHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	err := json.NewEncoder(w).Encode(response)
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		http.Error(w, "Failed to create JWKS response", http.StatusInternalServerError)
 	}
 }
-func authHandler(w http.ResponseWriter, r *http.Request) {
+func (s *keyStore) authHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	key := validKey
-
-	//If the expired query parameter exists and use the expired key
-	if _, exists := r.URL.Query()["expired"]; exists {
-		key = expiredKey
-	}
-
+	// Presence of expired selects expired keys, even for ?expired=false.
+	_, expired := r.URL.Query()["expired"]
 	now := time.Now()
-
-	var expiration time.Time
-
-	if key == expiredKey {
-		expiration = now.Add(-1 * time.Hour)
-	} else {
-		expiration = now.Add(1 * time.Hour)
+	stored, err := s.read(expired, now.Unix())
+	if err != nil || len(stored) == 0 {
+		http.Error(w, "No signing key available", http.StatusInternalServerError)
+		return
 	}
+	key := stored[len(stored)-1]
+	expiration := key.ExpiresAt
 
 	claims := jwt.MapClaims{
-		"sub": "fake-user",
+		"sub": "userABC",
 		"iat": now.Unix(),
 		"exp": expiration.Unix(),
 	}
