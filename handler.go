@@ -6,9 +6,11 @@ import (
 	"math/big"
 	"net/http"
 	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 )
-//public key info sent to client
+
+// Public key information returned to clients.
 type JWK struct {
 	Kty string `json:"kty"`
 	Kid string `json:"kid"`
@@ -17,34 +19,37 @@ type JWK struct {
 	N   string `json:"n"`
 	E   string `json:"e"`
 }
-//holds list of keys
+
 type JWKS struct {
 	Keys []JWK `json:"keys"`
 }
-//hanles requests to jwk endpoint
+
+// Returns all unexpired public keys from the database.
 func jwksHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		//only allow GET request
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	keys := []JWK{}
+	storedKeys, err := readKeys(db, false)
+	if err != nil {
+		http.Error(w, "Failed to read keys", http.StatusInternalServerError)
+		return
+	}
 
-	// Only include the key if it has not expired
-	if validKey != nil && validKey.ExpiresAt.After(time.Now()) {
-		publicKey := &validKey.PrivateKey.PublicKey
+	response := JWKS{Keys: []JWK{}}
 
-		// Convert RSA modulus to Base64 URL encoding
+	for _, key := range storedKeys {
+		publicKey := &key.PrivateKey.PublicKey
+
 		n := base64.RawURLEncoding.EncodeToString(publicKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(
+			big.NewInt(int64(publicKey.E)).Bytes(),
+		)
 
-		// Convert RSA exponent to Base64 URL encoding
-		eBytes := big.NewInt(int64(publicKey.E)).Bytes()
-		e := base64.RawURLEncoding.EncodeToString(eBytes)
-
-		keys = append(keys, JWK{
+		response.Keys = append(response.Keys, JWK{
 			Kty: "RSA",
-			Kid: validKey.Kid,
+			Kid: key.Kid,
 			Use: "sig",
 			Alg: "RS256",
 			N:   n,
@@ -52,49 +57,43 @@ func jwksHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	response := JWKS{
-		Keys: keys,
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-
-	err := json.NewEncoder(w).Encode(response)
-	if err != nil {
-		http.Error(w, "Failed to create JWKS response", http.StatusInternalServerError)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		return
 	}
 }
+
+// Mocks authentication and signs a JWT using a stored private key.
 func authHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	key := validKey
+	// Any presence of "expired" selects expired keys.
+	_, expired := r.URL.Query()["expired"]
 
-	//If the expired query parameter exists and use the expired key
-	if _, exists := r.URL.Query()["expired"]; exists {
-		key = expiredKey
+	keys, err := readKeys(db, expired)
+	if err != nil {
+		http.Error(w, "Failed to read keys", http.StatusInternalServerError)
+		return
 	}
 
-	now := time.Now()
-
-	var expiration time.Time
-
-	if key == expiredKey {
-		expiration = now.Add(-1 * time.Hour)
-	} else {
-		expiration = now.Add(1 * time.Hour)
+	if len(keys) == 0 {
+		http.Error(w, "No signing key available", http.StatusInternalServerError)
+		return
 	}
 
+	key := keys[len(keys)-1]
+
+	// Credentials are intentionally not validated for this assignment.
 	claims := jwt.MapClaims{
-		"sub": "fake-user",
-		"iat": now.Unix(),
-		"exp": expiration.Unix(),
+		"sub": "userABC",
+		"iat": time.Now().Unix(),
+		"exp": key.ExpiresAt.Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-
-	//Add the key ID to the JWT header
 	token.Header["kid"] = key.Kid
 
 	signedToken, err := token.SignedString(key.PrivateKey)
@@ -104,6 +103,5 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/jwt")
-	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(signedToken))
 }
